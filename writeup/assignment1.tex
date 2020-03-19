@@ -1,0 +1,29 @@
+\documentclass{article}
+
+\title{ENGSCI 760: Heuristics Assignment - Ship Balancing}
+\author{Ben Whittington}
+\date{March 2020}
+
+\usepackage[margin=25mm]{geometry}
+
+\begin{document}
+	\maketitle
+	\section*{Question 1: Objective Function}
+	$$f(\textbf{s}) = \frac{|\sum_{i=1}^{n}5w_i x_i|+|\sum_{j=1}^{n}w_jy_j|}{\sum_{k=1}^{n}w_k}$$
+	
+	\section*{Question 2: Neighborhood Rule}
+	let
+	$$\mathbf{s} = (s_1,s_2,...,s_a,...,s_b,...,s_n)$$
+	then
+	$$\mathbf{t}(\mathbf{s},a,b) = (s_1,s_2,...,s_b,...,s_a,...,s_n)$$
+	
+	\section*{Question 3:  Zero Swap Case}
+	A swap of container $i$ with $s_b=0$ corresponds with moving container i into empty space $b$.
+	
+	\section*{Question 4: Equivalent Solutions}
+	swap with container i + 60\\
+	swap 2 empty spaces
+	\section*{Question 5: Distinct Solutions}
+	$$N(\mathbf{s})=\{\mathbf{t}(\mathbf{s},a,b)|a+60\ne b;a<b, \forall a,b <120;w(s_a) + w(s_b)\ne 0)\}$$
+	
+\end{document}
