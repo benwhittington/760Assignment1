@@ -3,17 +3,18 @@ import numpy as np
 def runTests():
     pass
 
-def swap(s, a, b):
-    assert(len(s)==120, "s must be 120 but is {}".format(len(s)))
-    assert(a<b, "a must be less than b, a={}, b={}".format(a, b))
+def swap(arr, a, b):
+    # assert(len(s)==120, "s must be 120 but is {}".format(len(s)))
+    assert(a < b, "a must be less than b, a={}, b={}".format(a, b))
+    s = np.copy(arr)
     s[a], s[b] = s[b], s[a]
     return s
 
-def obj(x, y):
-    return 5 * abs(y) + abs(x)
+def objective(dx, dy):
+    return 5 * abs(dy) + abs(dx)
 
 def readData(problemFileName = "ProbA.txt"):
-    path = "/home/ben/Documents/uni/760/assignment1/data/data/"
+    path = "/home/ben/Documents/uni/760/assignment1/data/"
     postionsFileName = "Positions.txt"
 
     n = 120
@@ -24,13 +25,60 @@ def readData(problemFileName = "ProbA.txt"):
 
     return containers, x, y
 
-if __name__ == "__main__":
+def computeDxDy(containers, x, y, massTotal):
+    dx = 0
+    dy = 0
+
+    for container in containers:
+        i = int(container[0])
+        dx += x[i] * container[1]
+        dy += y[i] * container[1]
+
+    return dx / massTotal, dy / massTotal
+
+def computeObjective(containers, x, y, massTotal):
+    dx, dy = computeDxDy(containers, x, y, massTotal)
+    return objective(dx, dy)
+
+def nextDescentIteration(containers, x, y, massTotal, obj):
+    # obj = computeObjective(containers, x, y, massTotal)
+
+    print("Current obj: ", obj)
+
+    for i in range(containers.shape[0]):
+        for j in range(i):
+            if((containers[i][1] == 0 and containers[j][1] == 0) or (j == i + 60)): continue
+            # compute obj of swapping containers i and j. Swap if obj (i, j) less than current obj
+            temp = swap(containers, i, j)
+            nextObj = computeObjective(temp, x, y, massTotal)
+
+            print("Next obj: ", nextObj)
+
+            if(nextObj < obj): 
+                containers = temp
+                return containers, nextObj
+
+
+def main():
 
     containers, x, y = readData()
-    n = 120
-    np.random.shuffle(containers)
+    containers = np.vstack((np.arange(120), containers)).T
 
-    pos = 38
-    print(x[pos], y[pos])
+    np.random.seed(0)
+    np.random.shuffle(containers) # works in place for some reason
 
+    massTotal = np.sum(containers, axis = 0)[1]
+    dx, dy = computeDxDy(containers, x, y, massTotal)
+    obj = objective(dx, dy)
+
+    temp = swap(containers, 10, 30)
     
+
+    # print(obj)
+    # print(dx, dy)
+
+    containers, obj = nextDescentIteration(containers, x, y, massTotal, obj)
+    print("\nNext descent obj: ", obj)
+
+if __name__ == "__main__":
+    main()
