@@ -9,9 +9,14 @@ def swap(s, a, b):
     s[a], s[b] = s[b], s[a]
     return s
 
+def obj(x, y):
+    return 5 * abs(y) + abs(x)
+
 def readData(problemFileName = "ProbA.txt"):
     path = "/home/ben/Documents/uni/760/assignment1/data/data/"
     postionsFileName = "Positions.txt"
+
+    n = 120
 
     containers = np.genfromtxt(path+problemFileName, skip_header=1)
     containers = np.pad(containers, (0,n-len(containers)), 'constant', constant_values=(0,0))
@@ -19,10 +24,13 @@ def readData(problemFileName = "ProbA.txt"):
 
     return containers, x, y
 
-if __name__=="__main__":
+if __name__ == "__main__":
 
     containers, x, y = readData()
     n = 120
     np.random.shuffle(containers)
+
+    pos = 38
+    print(x[pos], y[pos])
 
     
