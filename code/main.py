@@ -1,4 +1,8 @@
 import numpy as np
+import os
+
+if(os.name == 'posix'):
+    path = "/home/ben/Documents/uni/760/assignment1/data/"
 
 def runTests():
     pass
@@ -13,15 +17,14 @@ def swap(arr, a, b):
 def objective(dx, dy):
     return 5 * abs(dy) + abs(dx)
 
-def readData(problemFileName = "ProbA.txt"):
-    path = "/home/ben/Documents/uni/760/assignment1/data/"
+def readData(problemFileName = "ProbA.txt", n=120):
+    # path = "/home/ben/Documents/uni/760/assignment1/data/"
     postionsFileName = "Positions.txt"
-
-    n = 120
 
     containers = np.genfromtxt(path+problemFileName, skip_header=1)
     containers = np.pad(containers, (0,n-len(containers)), 'constant', constant_values=(0,0))
     _, x, y = np. genfromtxt(path+postionsFileName, skip_header=1).T
+    containers = np.vstack((np.arange(120), containers)).T
 
     return containers, x, y
 
@@ -41,10 +44,6 @@ def computeObjective(containers, x, y, massTotal):
     return objective(dx, dy)
 
 def nextDescentIteration(containers, x, y, massTotal, obj):
-    # obj = computeObjective(containers, x, y, massTotal)
-
-    print("Current obj: ", obj)
-
     for i in range(containers.shape[0]):
         for j in range(i):
             if((containers[i][1] == 0 and containers[j][1] == 0) or (j == i + 60)): continue
@@ -52,33 +51,46 @@ def nextDescentIteration(containers, x, y, massTotal, obj):
             temp = swap(containers, i, j)
             nextObj = computeObjective(temp, x, y, massTotal)
 
-            print("Next obj: ", nextObj)
-
             if(nextObj < obj): 
                 containers = temp
-                return containers, nextObj
+                return containers, nextObj, 0
+
+    return None, None, 1
+
+def runNextDescent(containers, x, y, massTotal, obj):
+    its = 0
+
+    try:
+        while(True):
+            tempContainers, tempObj, status = nextDescentIteration(containers, x, y, massTotal, obj)
+            if(status == 1): break
+            containers = tempContainers
+            obj = tempObj
+            print("Current obj: ", obj)
+            its += 1
+
+    except(KeyboardInterrupt):
+        pass
+
+    return containers, obj, its
+
+def saveSolution(fname, solution):
+    np.savetxt("/home/ben/Documents/uni/760/assignment1")
 
 
 def main():
-
     containers, x, y = readData()
-    containers = np.vstack((np.arange(120), containers)).T
-
+    
     np.random.seed(0)
     np.random.shuffle(containers) # works in place for some reason
 
     massTotal = np.sum(containers, axis = 0)[1]
-    dx, dy = computeDxDy(containers, x, y, massTotal)
-    obj = objective(dx, dy)
+    obj = computeObjective(containers, x, y, massTotal)
 
-    temp = swap(containers, 10, 30)
-    
+    solution, slnObj, iterations = runNextDescent(containers, x, y, massTotal, obj)
 
-    # print(obj)
-    # print(dx, dy)
-
-    containers, obj = nextDescentIteration(containers, x, y, massTotal, obj)
-    print("\nNext descent obj: ", obj)
+    print(containers)
+    print("Objective", obj, "found in", iterations, "iterations")
 
 if __name__ == "__main__":
     main()
