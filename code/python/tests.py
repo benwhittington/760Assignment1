@@ -25,7 +25,7 @@ class TestAll(unittest.TestCase):
             [0, 0]
         ])
 
-        self.assertTrue(np.array_equal, ans)
+        self.assertTrue(np.array_equal(s, ans))
 
 
     def testObj(self):
