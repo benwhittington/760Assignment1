@@ -41,27 +41,40 @@ def computeDxDy(s, weights, x, y, massTotal):
     return dx / massTotal, dy / massTotal
 
 def computeObjective(s, weights, x, y, massTotal):
-    dx, dy = computeDxDy(s, weights, x, y, massTotal)
-    return objective(dx, dy)
+    dx = 0
+    dy = 0
 
-def nextDescentIteration(s, weights, x, y, massTotal, obj):
-    for i in range(s.shape[0]):
-        for j in range(i):
+    for i, sI in enumerate(s):
+        # x of position, weight of container
+        dx += x[i] * weights[sI]
+        dy += y[i] * weights[sI]
+
+    return abs(dx / massTotal) + 5 * abs(dy / massTotal)
+
+def nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ):
+
+    for itr in range(s.shape[0]):
+        for jtr in range(itr):
+            i = (itr + startI) % 120
+            j = (jtr + startJ) % 120
             if((s[i] == 0 and s[j] == 0) or (j == i + 60)): continue
             # compute obj of swapping containers i and j. Swap if obj (i, j) less than current obj
             tempS = swap(s, i, j)
             nextObj = computeObjective(tempS, weights, x, y, massTotal)
             if(nextObj < obj): 
-                return tempS, nextObj, 0
+                return tempS, nextObj, i, j, 0
 
-    return None, None, 1
+    return s, obj, -1, -1, 1
 
 def runNextDescent(s, weights, x, y, massTotal, obj):
     its = 0
 
+    i = 0
+    j = 0
+
     try:
         while(True):
-            s, obj, status = nextDescentIteration(s, weights, x, y, massTotal, obj)
+            s, obj, i, j, status = nextDescentIteration(s, weights, x, y, massTotal, obj, i, j)
             if(status == 1): break
             print("Current obj: ", obj)
             its += 1
