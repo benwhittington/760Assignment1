@@ -1,3 +1,4 @@
 **.pyc
 *.pdf
 /code/__pycache__/
+*.out
