@@ -2,3 +2,4 @@
 *.pdf
 /code/__pycache__/
 *.out
+.vscode
