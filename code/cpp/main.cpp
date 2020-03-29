@@ -3,6 +3,7 @@
 #include <fstream>
 #include <algorithm>
 #include <math.h>
+#include <time.h>
 
 void makeTokens(std::string s, double* out);
 
@@ -132,7 +133,7 @@ F objective(S* s, const F*  weights, const F* x, const F* y, const F massTotal, 
 }
 
 template<typename S, typename F>
-int nextDescentIteration(S* s, F* weights, const F* x, const F* y, const F massTotal, F& obj, int& startI, int& startJ) {
+int nextDescentIteration(S* s, F* weights, const F* x, const F* y, const F massTotal, F& obj, int& startI, int& startJ, F* objStore, int& objIdx) {
     int i;
     int j;
     F nextObj;
@@ -146,6 +147,11 @@ int nextDescentIteration(S* s, F* weights, const F* x, const F* y, const F massT
 
             swap(s, i, j);
             nextObj = objective(s, weights, x, y, massTotal, obj);
+            if(objIdx != -1){ 
+                objStore[objIdx] = nextObj; 
+                ++objIdx;
+            }
+
 
             if(nextObj < obj) { 
                 obj = nextObj;
@@ -211,7 +217,7 @@ void copy(T* aBegin, T* aEnd, const T* bBegin, const T* bEnd) {
 }
 
 void run() {
-        std::string fname = "Positions.txt";
+    std::string fname = "Positions.txt";
     std::string problem = "ProbA.txt";
     const int n = getProblemSize(problem);
 
@@ -221,8 +227,18 @@ void run() {
     double* y = new double[120];
     double* weights = new double[n+1];
 
-    // double* bestObjStore = new double[3000];
-    // std::fill(&bestObjStore[0], &bestObjStore[3000], -1);
+    double* bestObjStore;
+    double* objStore;
+    int* bestObjIndex;
+
+    const bool store = false;
+
+    if(store) {
+        bestObjStore = new double[400];
+        objStore = new double[100000];
+        bestObjIndex = new int[400];
+    }
+
 
     readData(fname, x, y);
     readData(problem, weights);
@@ -232,60 +248,95 @@ void run() {
     fillSolution(s, n);
 
     srand(1000000);
-    std::random_shuffle(&s[0], &s[120]);
 
     double obj;
     double bestObj = 1000;
-    int startI;
-    int startJ;
-    int res;
-    int i = 0;
-    const int noRestarts = 40000;
 
-    for(int j = 0; j < noRestarts; ++j) {
+    int startI, startJ;             // for continuing through neighborhood pick up where left off
+    int res;                        // status of descent
+
+    int noDescents = 0;
+    int bestIdx = 0;                // index for storing best objective (plotting)
+    int objIdx = store ? 0 : -1;    // index for storing all computed objs (-1 if not plotting)
+    int indexStore[3];              // store indices of restarts (plotting)
+
+
+    const int noRestarts = 1000;
+    int restartNo = 0;
+
+    const double runTime = 40;      // mins
+    clock_t start, end;
+    double elapsed = 0;
+    start = clock();
+    
+    // for(; restartNo < noRestarts; ) {
+    while(elapsed < runTime * 60) {
         std::random_shuffle(&s[0], &s[120]);
         obj = objective(s, weights, x, y, massTotal, obj);
         res = 0;
         startJ = 0;
         startI = 0;
-
+        
         while(res != 1) {
-            res = nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ);
-            ++i;
+            res = nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ, objStore, objIdx);
+            ++noDescents;
+
+            if(obj / massTotal < bestObj) { 
+                copy(&bestS[0], &bestS[120], &s[0], &s[120]);
+                bestObj = obj / massTotal;
+                if(store) {
+                    bestObjIndex[bestIdx] = objIdx;
+                    bestObjStore[bestIdx] = bestObj;
+                    ++bestIdx;
+                }
+            }
         }
 
-        if(obj < bestObj) { 
-            copy(&bestS[0], &bestS[120], &s[0], &s[120]); 
-            bestObj = obj;
+        if(store) {
+            bestObjStore[bestIdx] = bestObj;
+            bestObjIndex[bestIdx] = objIdx;
+            ++bestIdx;
+            indexStore[restartNo] = bestIdx;
         }
-        if(j % 1000 == 0) { std::cout << "best objective: " << bestObj/massTotal << " iteration: " << i << " restart: " << j << std::endl; }
+
+        if(restartNo % 1000 == 0) {
+            end = clock();
+            elapsed = (double)(end - start)/(double)CLOCKS_PER_SEC;
+
+            std::cout 
+                << "best objective: " << bestObj 
+                << "\nnumber of descents: " << noDescents
+                << "\nrestart: " << j 
+                << "\ntime elapsed: " << elapsed / 60 << "mins" 
+                << "\n------------------------------------------"
+                << std::endl;
+        }
+        ++restartNo;
     }
 
-    std::cout << "Best objective: " << bestObj/massTotal << std::endl;
-    // print(&s[0], &s[120]);
-    writeSolution("testSln", &bestS[0], &bestS[120]);
-    // writeSolution("objTest", &bestObjStore[0], &bestObjStore[i]);
+    writeSolution("sln", &bestS[0], &bestS[120]);
+
+    if(store) {
+        writeSolution("allObj", &objStore[0], &objStore[objIdx]);
+        writeSolution("bestObj", &bestObjStore[0], &bestObjStore[bestIdx]);
+        writeSolution("bestObjIdx", &bestObjIndex[0], &bestObjIndex[bestIdx]);
+        writeSolution("indices", &indexStore[0], &indexStore[3]);
+    }
 
     delete x;
     delete y;
     delete s;
     delete weights;
     delete bestS;
-    // delete bestObjStore;
+
+    if(store) {
+        delete bestObjIndex;      
+        delete objStore;        
+        delete bestObjStore;            
+    }
+
 }
 
 int main(void) {
-    // std::cout << "done" << std::endl;
-    // run();
-
-    // double* a = new double[10];
-    // double* b = new double[10];
-
-    // std::fill(&a[0], &a[10], -1);
-
-    // copy(&b[0], &b[10], &a[0], &a[10]);
-
-    // print(&b[0], &b[10]);
-    
-
+    run();
 }
