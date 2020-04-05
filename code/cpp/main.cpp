@@ -121,7 +121,7 @@ void fillSolution(T* s, size_t n) {
 }
 
 template<typename S, typename F>
-F objective(S* s, const F*  weights, const F* x, const F* y, const F massTotal, F obj) {
+F objective(S* s, const F*  weights, const F* x, const F* y) {
     F dx = 0;
     F dy = 0;
 
@@ -129,11 +129,36 @@ F objective(S* s, const F*  weights, const F* x, const F* y, const F massTotal, 
         dx += x[i] * weights[s[i]];
         dy += y[i] * weights[s[i]];
     }
+
     return fabs(dx) + 5 * fabs(dy);
 }
 
 template<typename S, typename F>
-int nextDescentIteration(S* s, F* weights, const F* x, const F* y, const F massTotal, F& obj, int& startI, int& startJ, F* objStore, int& objIdx) {
+void computeDxDy(S* s, const F* weights, const F* x, const F* y, F& dx, F& dy) {
+    // F dx = 0;
+    // F dy = 0;
+
+    for(int i = 0; i < 120; ++i) {
+        dx += x[i] * weights[s[i]];
+        dy += y[i] * weights[s[i]];
+    }
+}
+
+template<typename S, typename F>
+void centerOfMass(const S* s, const int a, const int b, const F* weights, const F* x, const F* y, F& dx, F& dy) {
+    dx = dx - (x[a] * weights[s[a]] + x[b] * weights[s[b]]) + (x[a] * weights[s[b]] + x[b] * weights[s[a]]);
+    dy = dy - (y[a] * weights[s[a]] + y[b] * weights[s[b]]) + (y[a] * weights[s[b]] + y[b] * weights[s[a]]);
+
+
+
+    // for(int i = 0; i < 120; ++i) {
+    //     dxNew += x[i] * weights[s[i]];
+    //     dyNew += y[i] * weights[s[i]];
+    // }
+}
+
+template<typename S, typename F>
+int nextDescentIteration(S* s, F* weights, const F* x, const F* y, const F massTotal, F& obj, int& startI, int& startJ, F& dx, F& dy, F* objStore, int& objIdx) {
     int i;
     int j;
     F nextObj;
@@ -142,16 +167,15 @@ int nextDescentIteration(S* s, F* weights, const F* x, const F* y, const F massT
         for(int jtr = 0; jtr < itr; ++jtr) {
             i = (itr + startI) % 120;
             j = (jtr + startJ) % 120;
-
+            // if(j + 60 == i) { std::cout << j << " + 60 = " << i << std::endl; }
             if((s[i] == 0 && s[j] == 0) || (j + 60 == i)) { continue; }
 
             swap(s, i, j);
-            nextObj = objective(s, weights, x, y, massTotal, obj);
-            if(objIdx != -1){ 
+            nextObj = objective(s, weights, x, y);
+            if(objIdx != -1) { 
                 objStore[objIdx] = nextObj; 
                 ++objIdx;
             }
-
 
             if(nextObj < obj) { 
                 obj = nextObj;
@@ -217,10 +241,13 @@ void copy(T* aBegin, T* aEnd, const T* bBegin, const T* bEnd) {
 }
 
 void run() {
+
+    // read data
     std::string fname = "Positions.txt";
     std::string problem = "ProbA.txt";
     const int n = getProblemSize(problem);
 
+    // alloc arrays. Could be done on stack but ¯\_(ツ)_/¯
     int* s = new int[120];
     int* bestS = new int[120];
     double* x = new double[120];
@@ -240,14 +267,37 @@ void run() {
     }
 
 
+    // read in problem and coords of container positions
     readData(fname, x, y);
     readData(problem, weights);
 
     double massTotal = sum(&weights[0], &weights[n+1]);
 
-    fillSolution(s, n);
 
+    // fills positions with containers in problem and empty containers for the rest
+    fillSolution(s, n);
     srand(1000000);
+
+    // initial COM location for fast obj calc
+    double dx = 0;
+    double dy = 0;
+    computeDxDy(s, weights, x, y, dx, dy);
+
+    std::cout << "dx: " << dx << std::endl;
+    std::cout << "dy: " << dy << std::endl;
+    centerOfMass(s, 0, 1, weights, x, y, dx, dy);
+    std::cout << "dx: " << dx << std::endl;
+    std::cout << "dy: " << dy << std::endl;
+
+    swap(s, 0, 1);
+
+    // computeDxDy(s, weights, x, y, dx, dy);
+    double u = 1.0;
+    double obj = objective(s, weights, x, y, massTotal, u);
+    std::cout << "dx: " << dx << std::endl;
+    std::cout << "dy: " << dy << std::endl;
+
+    /*
 
     double obj;
     double bestObj = 1000;
@@ -278,7 +328,7 @@ void run() {
         startI = 0;
         
         while(res != 1) {
-            res = nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ, objStore, objIdx);
+            res = nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ, dx, dy, objStore, objIdx);
             ++noDescents;
 
             if(obj / massTotal < bestObj) { 
@@ -304,9 +354,9 @@ void run() {
             elapsed = (double)(end - start)/(double)CLOCKS_PER_SEC;
 
             std::cout 
-                << "best objective: " << bestObj 
+                << "best objective: " << bestObj
                 << "\nnumber of descents: " << noDescents
-                << "\nrestart: " << j 
+                << "\nrestart: " << restartNo
                 << "\ntime elapsed: " << elapsed / 60 << "mins" 
                 << "\n------------------------------------------"
                 << std::endl;
@@ -322,6 +372,8 @@ void run() {
         writeSolution("bestObjIdx", &bestObjIndex[0], &bestObjIndex[bestIdx]);
         writeSolution("indices", &indexStore[0], &indexStore[3]);
     }
+
+    /**/
 
     delete x;
     delete y;
