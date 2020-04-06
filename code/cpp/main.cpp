@@ -10,9 +10,6 @@ void makeTokens(std::string s, double* out);
 template<typename T>
 void swap(T* s, int a, int b); // done
 
-// template<typename T>
-// void shuffle(T* s, size_t size); // done
-
 void readData(std::string fname, float* x, float* y); // done
 
 void readData(std::string fname, float* weights); // done
@@ -23,7 +20,7 @@ template<typename T>
 void fillSolution(T* s, size_t n); // done
 
 template<typename S, typename F>
-F objective(S* s, const F* weights, const F* x, const F* y, const F massTotal, F obj);
+F objective(S* s, const F* weights, const F* x, const F* y);
 
 template<typename S, typename F>
 int nextDescentIteration(S* s, const F* weights, const F* x, const F* y, const F massTotal, F& obj, int& startI, int& startJ);
@@ -53,8 +50,8 @@ void swap(T* s, int a, int b) {
 }
 
 template<typename T>
-void readData(std::string fname, T* x, T* y) {
-    std::string path = "/home/ben/Documents/uni/760/assignment1/data/";
+void readData(std::string path, std::string fname, T* x, T* y) {
+    // std::string path = "/home/ben/Documents/uni/760/assignment1/data/";
 
     std::ifstream positionsStream;
     positionsStream.open(path + "Positions.txt"); //put your program together with thsi file in the same folder.
@@ -76,8 +73,8 @@ void readData(std::string fname, T* x, T* y) {
     delete temp;
 }
 
-void readData(std::string fname, double* weights) {
-    std::string path = "/home/ben/Documents/uni/760/assignment1/data/";
+void readData(std::string path, std::string fname, double* weights) {
+    // std::string path = "/home/ben/Documents/uni/760/assignment1/data/";
     std::ifstream weightsStream;
     weightsStream.open(path+fname);
     weights[0] = 0;
@@ -94,8 +91,8 @@ void readData(std::string fname, double* weights) {
     }
 }
 
-int getProblemSize(std::string fname) {
-    std::string path = "/home/ben/Documents/uni/760/assignment1/data/";
+int getProblemSize(std::string path, std::string fname) {
+    // std::string path = "/home/ben/Documents/uni/760/assignment1/data/";
     std::ifstream weightsStream;
     weightsStream.open(path+fname);
 
@@ -135,8 +132,8 @@ F objective(S* s, const F*  weights, const F* x, const F* y) {
 
 template<typename S, typename F>
 void computeDxDy(S* s, const F* weights, const F* x, const F* y, F& dx, F& dy) {
-    // F dx = 0;
-    // F dy = 0;
+    dx = 0;
+    dy = 0;
 
     for(int i = 0; i < 120; ++i) {
         dx += x[i] * weights[s[i]];
@@ -146,15 +143,8 @@ void computeDxDy(S* s, const F* weights, const F* x, const F* y, F& dx, F& dy) {
 
 template<typename S, typename F>
 void centerOfMass(const S* s, const int a, const int b, const F* weights, const F* x, const F* y, F& dx, F& dy) {
-    dx = dx - (x[a] * weights[s[a]] + x[b] * weights[s[b]]) + (x[a] * weights[s[b]] + x[b] * weights[s[a]]);
-    dy = dy - (y[a] * weights[s[a]] + y[b] * weights[s[b]]) + (y[a] * weights[s[b]] + y[b] * weights[s[a]]);
-
-
-
-    // for(int i = 0; i < 120; ++i) {
-    //     dxNew += x[i] * weights[s[i]];
-    //     dyNew += y[i] * weights[s[i]];
-    // }
+    dx += - (x[a] * weights[s[a]] + x[b] * weights[s[b]]) + (x[a] * weights[s[b]] + x[b] * weights[s[a]]);
+    dy += - (y[a] * weights[s[a]] + y[b] * weights[s[b]]) + (y[a] * weights[s[b]] + y[b] * weights[s[a]]);
 }
 
 template<typename S, typename F>
@@ -162,6 +152,11 @@ int nextDescentIteration(S* s, F* weights, const F* x, const F* y, const F massT
     int i;
     int j;
     F nextObj;
+    F testObj;
+    F tempDx, tempDy;
+    F testDx, testDy;
+
+    std::cout << "Inside obj: " << obj << std::endl;
 
     for(int itr = 0;itr < 120; ++itr) {
         for(int jtr = 0; jtr < itr; ++jtr) {
@@ -171,7 +166,22 @@ int nextDescentIteration(S* s, F* weights, const F* x, const F* y, const F massT
             if((s[i] == 0 && s[j] == 0) || (j + 60 == i)) { continue; }
 
             swap(s, i, j);
-            nextObj = objective(s, weights, x, y);
+            computeDxDy(s, weights, x, y, testDx, testDy);
+            testObj = objective(s, weights, x, y);
+            swap(s, i, j); // swap i and j back
+
+            tempDx = dx;
+            tempDy = dy;
+
+            centerOfMass(s, i, j, weights, x, y, tempDx, tempDy);
+            // std::cout << tempDx << std::endl;
+            nextObj = fabs(tempDx) + 5 * fabs(tempDy);
+            // std::cout << testObj << (testObj == nextObj ? " == " : " != ") << nextObj << std::endl; 
+            // std::cout << nextObj << ", " << obj << std::endl;
+            std::cout << tempDx << ", " << testDx << std::endl;
+            std::cout << tempDy << ", " << testDy << std::endl;
+            std::cout << "-----------------------" << std::endl;
+
             if(objIdx != -1) { 
                 objStore[objIdx] = nextObj; 
                 ++objIdx;
@@ -181,9 +191,13 @@ int nextDescentIteration(S* s, F* weights, const F* x, const F* y, const F massT
                 obj = nextObj;
                 startI = i;
                 startJ = j;
+                dx = tempDx;
+                dy = tempDy;
+                swap(s, i, j);
+                std::cout << "done" << std::endl;
                 return 0;
             }
-            swap(s, i, j); // swap i and j back
+            // swap(s, i, j); // swap i and j back
         }
     }
     return 1;
@@ -243,9 +257,10 @@ void copy(T* aBegin, T* aEnd, const T* bBegin, const T* bEnd) {
 void run() {
 
     // read data
+    std::string path  = "/home/benwhittington/Documents/uni/760/760Assignment1/data/";
     std::string fname = "Positions.txt";
     std::string problem = "ProbA.txt";
-    const int n = getProblemSize(problem);
+    const int n = getProblemSize(path, problem);
 
     // alloc arrays. Could be done on stack but ¯\_(ツ)_/¯
     int* s = new int[120];
@@ -268,11 +283,10 @@ void run() {
 
 
     // read in problem and coords of container positions
-    readData(fname, x, y);
-    readData(problem, weights);
+    readData(path, fname, x, y);
+    readData(path, problem, weights);
 
     double massTotal = sum(&weights[0], &weights[n+1]);
-
 
     // fills positions with containers in problem and empty containers for the rest
     fillSolution(s, n);
@@ -281,26 +295,39 @@ void run() {
     // initial COM location for fast obj calc
     double dx = 0;
     double dy = 0;
+
+    std::random_shuffle(&s[0], &s[120]);
+
     computeDxDy(s, weights, x, y, dx, dy);
-
-    std::cout << "dx: " << dx << std::endl;
-    std::cout << "dy: " << dy << std::endl;
-    centerOfMass(s, 0, 1, weights, x, y, dx, dy);
-    std::cout << "dx: " << dx << std::endl;
+    
+    std::cout << "dx: " << dx << " | ";
     std::cout << "dy: " << dy << std::endl;
 
-    swap(s, 0, 1);
+    int a = 5, b = 5;
 
-    // computeDxDy(s, weights, x, y, dx, dy);
-    double u = 1.0;
-    double obj = objective(s, weights, x, y, massTotal, u);
-    std::cout << "dx: " << dx << std::endl;
+    centerOfMass(s, a, b, weights, x, y, dx, dy);
+    std::cout << "dx: " << dx << " | ";
     std::cout << "dy: " << dy << std::endl;
+
+    swap(s, a, b);
+    computeDxDy(s, weights, x, y, dx, dy);
+    std::cout << "dx: " << dx << " | ";
+    std::cout << "dy: " << dy << std::endl;
+
+    double obj = objective(s, weights, x, y);
+    std::cout << obj << std::endl;
+    swap(s, a, b);
+    obj = objective(s, weights, x, y);
+    std::cout << obj << std::endl;    
+    swap(s, a, b);
+    obj = objective(s, weights, x, y);
+    std::cout << obj << std::endl;
+    /**/
 
     /*
 
     double obj;
-    double bestObj = 1000;
+    double bestObj = 10000000;
 
     int startI, startJ;             // for continuing through neighborhood pick up where left off
     int res;                        // status of descent
@@ -311,7 +338,7 @@ void run() {
     int indexStore[3];              // store indices of restarts (plotting)
 
 
-    const int noRestarts = 1000;
+    const int noRestarts = 1;
     int restartNo = 0;
 
     const double runTime = 40;      // mins
@@ -319,24 +346,33 @@ void run() {
     double elapsed = 0;
     start = clock();
     
-    // for(; restartNo < noRestarts; ) {
-    while(elapsed < runTime * 60) {
+    double testDx, testDy;
+
+    for(; restartNo < noRestarts; ) {
+    // while(elapsed < runTime * 60) {
         std::random_shuffle(&s[0], &s[120]);
-        obj = objective(s, weights, x, y, massTotal, obj);
+        obj = objective(s, weights, x, y);
+        
         res = 0;
         startJ = 0;
         startI = 0;
         
         while(res != 1) {
+
+            // std::cout << obj << std::endl;
+            std::cout << "Outside obj: " << obj << std::endl;
             res = nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ, dx, dy, objStore, objIdx);
+            computeDxDy(s, weights, x, y, testDx, testDy);
+            // std::cout << testDx << ", " << testDy << std::endl;
+
             ++noDescents;
 
-            if(obj / massTotal < bestObj) { 
+            if(obj < bestObj) { 
                 copy(&bestS[0], &bestS[120], &s[0], &s[120]);
-                bestObj = obj / massTotal;
+                bestObj = obj;
                 if(store) {
                     bestObjIndex[bestIdx] = objIdx;
-                    bestObjStore[bestIdx] = bestObj;
+                    bestObjStore[bestIdx] = bestObj / massTotal;
                     ++bestIdx;
                 }
             }
@@ -364,7 +400,9 @@ void run() {
         ++restartNo;
     }
 
-    writeSolution("sln", &bestS[0], &bestS[120]);
+    writeSolution("sln", bestS, bestS + 120);
+
+    std::cout << "Best objective: " << bestObj / massTotal << std::endl;
 
     if(store) {
         writeSolution("allObj", &objStore[0], &objStore[objIdx]);
