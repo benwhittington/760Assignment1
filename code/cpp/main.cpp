@@ -156,7 +156,6 @@ template<typename S, typename F>
 void kicks(S* s, const F* weights, const F* x, const F* y, const int n, F* bestObjStore, int* bestObjIdx, int& objIdx, int& bestIdx, const F massTotal) {
     int c = 0;
     int i, j;
-
     while(c < n) {
         i = (int)(119 * (double(rand()) / RAND_MAX));
         j = (int)(119 * (double(rand()) / RAND_MAX));
@@ -172,6 +171,48 @@ void kicks(S* s, const F* weights, const F* x, const F* y, const int n, F* bestO
             ++objIdx;
         }
     }
+}
+
+template<typename S, typename F>
+int tabuIteration(S* s, S* tabuList, const int tabuListLength, const F* weights, const F* x, const F* y, const F massTotal, F& obj, F& dx, F& dy, F* objStore, int& objIdx, const int itrCount) {
+    F nextObj, tempDx, tempDy;
+    F bestObj = INFINITY;
+    F bestDx, bestDy;
+    int bestI, bestJ;
+    int i, j;
+
+    for(i = 0;i < 120; ++i) {
+        for(j = 0; j < i; ++j) {
+            // continue if swapping 2 empty containers, containers are in same position,
+            // or previous swap of 2 containers was within tabu list length
+            if((s[i] == 0 && s[j] == 0) || (j + 60 == i) || (itrCount - tabuList[s[i]] < tabuListLength) || (itrCount - tabuList[s[j]] < tabuListLength)) { continue; }
+
+            tempDx = dx;
+            tempDy = dy;
+
+            centerOfMass(s, i, j, weights, x, y, tempDx, tempDy);
+            nextObj = fabs(tempDx) + 5 * fabs(tempDy);
+
+            // for plotting
+            if(objIdx != -1) { 
+                objStore[objIdx] = nextObj; 
+                ++objIdx;
+            }
+
+            if(nextObj < bestObj) { 
+                bestObj = nextObj;
+                bestI = i;
+                bestJ = j;
+                bestDx = tempDx;
+                bestDy = tempDy;
+            }
+        }
+    }
+    dx = bestDx;
+    dy = bestDy;
+    obj = bestObj;
+    swap(s, bestI, bestJ);
+    return 0;
 }
 
 template<typename S, typename F>
@@ -192,6 +233,7 @@ int nextDescentIteration(S* s, const F* weights, const F* x, const F* y, const F
             centerOfMass(s, i, j, weights, x, y, tempDx, tempDy);
             nextObj = fabs(tempDx) + 5 * fabs(tempDy);
 
+            // for plotting
             if(objIdx != -1) { 
                 objStore[objIdx] = nextObj; 
                 ++objIdx;
@@ -211,9 +253,9 @@ int nextDescentIteration(S* s, const F* weights, const F* x, const F* y, const F
     }
     return 1;
 }
-/*
+
 template<typename S, typename F>
-int runNextDescent(S* s, F* weights, F* x, F* y, F massTotal, double& obj) {
+void runNextDescent(S* s, F* weights, F* x, F* y, F massTotal, F* objStore, const bool store) {
     int bestSArr[120];
     int* bestS = &bestSArr[0];
     double obj;
@@ -279,14 +321,14 @@ int runNextDescent(S* s, F* weights, F* x, F* y, F massTotal, double& obj) {
                         dx = tempDx;
                         dy = tempDy;
                         swap(s, i, j);
-                        res = 0
+                        res = 0;
                         goto endLoop; //! THIS IS ONLY HERE BECAUSE I CANT PUT IT IN A FUNCTION DAMN IT ANDREW
 
                     }
                 }
             }
             res = 1;
-endLoop: //! FU
+    endLoop: //! FU
 
             ++noDescents;
             if(store) {
@@ -305,7 +347,7 @@ endLoop: //! FU
         ++restartNo;
     }
 }
-*/
+
 template<typename T>
 void print(const T* start, const T* end) {
     const T* p = start;
@@ -369,6 +411,9 @@ void run() {
     double* y = new double[120];
     double* weights = new double[n+1];
 
+    int* tabuList = new int[120];
+    std::fill(tabuList, tabuList +120, -50);
+
     double* bestObjStore;
     double* objStore;
     int* bestObjIndex;
@@ -385,7 +430,8 @@ void run() {
     std::random_shuffle(&s[0], &s[120]);
     
     const bool randRestarts = false; // false for kicks, true for rand restarts
-    const bool store = true;
+    const bool store = false;
+    const int tabuLength = 50;
 
     if(store) {
         bestObjStore = new double[1000];
@@ -394,13 +440,13 @@ void run() {
     }
 
     double obj;
-    double bestObj = 10000000;
+    double bestObj = INFINITY;
 
     int startI, startJ;             // for continuing through neighborhood pick up where left off
     int res;                        // status of descent
 
     int noDescents = 0;
-    int bestIdx = 0;                // index for storing best objective (plotting)
+    int bestIdx = store ? 0: -1;                // index for storing best objective (plotting)
     int objIdx = store ? 0 : -1;    // index for storing all computed objs (-1 if not plotting)
     int indexStore[3];              // store indices of restarts (plotting)
     double dx = 0;                  // for storing com for fast obj calc
@@ -415,6 +461,7 @@ void run() {
     start = clock();
     
     double testDx, testDy;
+    int itrCount;
 
     for(; restartNo < noRestarts; ) {
     // while(elapsed < runTime * 60) {
@@ -426,11 +473,14 @@ void run() {
         res = 0;
         startJ = 0;
         startI = 0;
-        
-        while(res != 1) {
+        itrCount = 0;
 
-            res = nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ, dx, dy, objStore, objIdx);
-            computeDxDy(s, weights, x, y, testDx, testDy);
+        // while(res != 1) {
+        for(int k = 0; k < 100; ++k) {
+
+            // res = nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ, dx, dy, objStore, objIdx);
+            tabuIteration(s, tabuList, tabuLength, weights, x, y, massTotal, obj, dx, dy, objStore, objIdx, itrCount);
+            std::cout << obj << std::endl;
 
             ++noDescents;
             if(store) {
@@ -474,8 +524,6 @@ void run() {
         */
         ++restartNo;
     }
-    std::cout << objIdx << std::endl;
-    std::cout << bestIdx << std::endl;
 
     writeSolution("sln", bestS, bestS + 120);
 
@@ -493,6 +541,8 @@ void run() {
     delete s;
     delete weights;
     delete bestS;
+    delete tabuList;
+
     if(store) {
         delete objStore;    
         delete bestObjStore;            
@@ -502,5 +552,6 @@ void run() {
 }
 
 int main(void) {
+    // std::cout << INFINITY << std::endl;
     run();
 }
