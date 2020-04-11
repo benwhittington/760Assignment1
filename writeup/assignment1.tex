@@ -10,6 +10,8 @@
 	\maketitle
 	\section*{Question 1: Objective Function}
 	$$f(\textbf{s}) = \frac{|\sum_{i=1}^{n}5w_i x_i|+|\sum_{j=1}^{n}w_jy_j|}{\sum_{k=1}^{n}w_k}$$
+	Note that maximising \textbf{s} given the objective function above is the same as maximising:
+		$$f(\textbf{s}) = |\sum_{i=1}^{n}5w_i x_i|+|\sum_{j=1}^{n}w_jy_j|$$
 	
 	\section*{Question 2: Neighborhood Rule}
 	let
@@ -18,12 +20,23 @@
 	$$\mathbf{t}(\mathbf{s},a,b) = (s_1,s_2,...,s_b,...,s_a,...,s_n)$$
 	
 	\section*{Question 3:  Zero Swap Case}
-	A swap of container $i$ with $s_b=0$ corresponds with moving container i into empty space $b$.
+	A swap of container $i$ with $s_b=0$ corresponds with moving container $i$ into empty space $b$.
 	
 	\section*{Question 4: Equivalent Solutions}
-	swap with container i + 60\\
-	swap 2 empty spaces
+	The following sets are physically equivalent.\\
+	Swapping a container with one in the same position but above or below it.
+	$$\{t(\textbf{s}, a, b) | b = a+60; b > a\}$$
+	Swap 2 empty spaces:
+	$$\{t(\textbf{s},a,b)|w_a=0\wedge w_b=0\}$$
 	\section*{Question 5: Distinct Solutions}
-	$$N(\mathbf{s})=\{\mathbf{t}(\mathbf{s},a,b)|a+60\ne b;a<b, \forall a,b <120;w(s_a) + w(s_b)\ne 0)\}$$
+	$$N(\mathbf{s})=\{\mathbf{t}(\mathbf{s},a,b)|a+60\ne b;a<b;b <n;w(s_a) + w(s_b)\ne 0)\}$$
+	
+	\section*{Question 6: Objective Updates}
+	let $d_x^i$, $d_y^i$ be the $x$ and $y$ center of mass ordinates respectively after the $i$th swap of elements of solution \textbf{s}, $a$, $b$.
+	
+	$$d_x^{i+1} = d_x^i - x[a]w[s[a]] - x[b]w[s[b]] + x[a]w[s[b]]+x[b]w[s[a]]$$
+	
+	$$d_y^{i+1} = d_y^i - y[a]w[s[a]] - y[b]w[s[b]] + y[a]w[s[b]]+y[b]w[s[a]]$$
+	This will require the storage of $d_x$ and $d_y$ in addition to the objective.
 	
 \end{document}
