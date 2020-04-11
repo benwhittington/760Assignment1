@@ -5,6 +5,8 @@
 #include <math.h>
 #include <time.h>
 
+#define STORE_SIZE 1000000
+
 void makeTokens(std::string s, double* out);
 
 template<typename T>
@@ -32,6 +34,9 @@ void copy(T* aBegin, T* aEnd, const T* bBegin, const T* bEnd);
 
 template<typename T>
 void print(const T* start, const T* end);
+
+template<typename T>
+void writeSolution(std::string fname, const T* begin, const T* end);
 
 void makeTokens(std::string s, double* out) { // cannot template easily because of stof vs. stod.
     std::string delimiter = "  ";
@@ -173,8 +178,20 @@ void kicks(S* s, const F* weights, const F* x, const F* y, const int n, F* bestO
     }
 }
 
+int countValidNeighbors(int* begin, int* end, const int n, int itrCount) {
+    int* p = begin;
+    int res = 0;
+    while(p < end) {
+        res += (itrCount - *p < n) ? 0 : 1;
+        // std::cout << "tabulist elem: " << *p << " itrCount: " << itrCount << " diff: " << itrCount - *p << std::endl;
+        ++p;
+    }
+    // exit(0);
+    return res;
+}
+
 template<typename S, typename F>
-int tabuIteration(S* s, S* tabuList, const int tabuListLength, const F* weights, const F* x, const F* y, const F massTotal, F& obj, F& dx, F& dy, F* objStore, int& objIdx, const int itrCount) {
+void tabuIteration(S* s, S* tabuList, const int tabuListLength, const F* weights, const F* x, const F* y, const F massTotal, F& obj, F& dx, F& dy, F* objStore, int& objIdx, const int itrCount) {
     F nextObj, tempDx, tempDy;
     F bestObj = INFINITY;
     F bestDx, bestDy;
@@ -183,9 +200,16 @@ int tabuIteration(S* s, S* tabuList, const int tabuListLength, const F* weights,
 
     for(i = 0;i < 120; ++i) {
         for(j = 0; j < i; ++j) {
-            // continue if swapping 2 empty containers, containers are in same position,
-            // or previous swap of 2 containers was within tabu list length
-            if((s[i] == 0 && s[j] == 0) || (j + 60 == i) || (itrCount - tabuList[s[i]] < tabuListLength) || (itrCount - tabuList[s[j]] < tabuListLength)) { continue; }
+            if((s[i] == 0 && s[j] == 0) || (j + 60 == i)) { continue; }
+
+            if(itrCount - tabuList[s[i]] < tabuListLength) {
+                ++i;
+                if(i > 119) { goto endTabuLoop; }
+                else { j = 0; }
+            }
+            if(itrCount - tabuList[s[j]] < tabuListLength) {
+                continue;
+            }
 
             tempDx = dx;
             tempDy = dy;
@@ -195,8 +219,9 @@ int tabuIteration(S* s, S* tabuList, const int tabuListLength, const F* weights,
 
             // for plotting
             if(objIdx != -1) { 
-                objStore[objIdx] = nextObj; 
+                objStore[objIdx] = nextObj / massTotal;
                 ++objIdx;
+                if(objIdx > STORE_SIZE) { throw std::out_of_range("Store index exceeded " + std::to_string(STORE_SIZE)); }
             }
 
             if(nextObj < bestObj) { 
@@ -208,11 +233,15 @@ int tabuIteration(S* s, S* tabuList, const int tabuListLength, const F* weights,
             }
         }
     }
+
+    endTabuLoop:
     dx = bestDx;
     dy = bestDy;
     obj = bestObj;
+
     swap(s, bestI, bestJ);
-    return 0;
+    tabuList[s[bestI]] = itrCount;
+    tabuList[s[bestJ]] = itrCount;
 }
 
 template<typename S, typename F>
@@ -235,7 +264,7 @@ int nextDescentIteration(S* s, const F* weights, const F* x, const F* y, const F
 
             // for plotting
             if(objIdx != -1) { 
-                objStore[objIdx] = nextObj; 
+                objStore[objIdx] = nextObj / massTotal; 
                 ++objIdx;
             }
 
@@ -255,47 +284,213 @@ int nextDescentIteration(S* s, const F* weights, const F* x, const F* y, const F
 }
 
 template<typename S, typename F>
-void runNextDescent(S* s, F* weights, F* x, F* y, F massTotal, F* objStore, const bool store) {
-    int bestSArr[120];
-    int* bestS = &bestSArr[0];
-    double obj;
-    double bestObj = 10000000;
+void runTabu(S* s, const int tabuListLength, const F* weights, const F* x, const F* y, const F massTotal, const bool store, const bool randRestarts, F& obj) {
+    double bestObj;
+    double currentObj;
 
-    int startI, startJ;             // for continuing through neighborhood pick up where left off
-    int res;                        // status of descent
+    double dx, dy;
 
     int noDescents = 0;
-    int bestIdx = 0;                // index for storing best objective (plotting)
-    int objIdx = 0;    // index for storing all computed objs (-1 if not plotting)
+    int bestIdx = store ? 0: -1;    // index for storing best objective (plotting)
     int indexStore[3];              // store indices of restarts (plotting)
-    double dx = 0;                  // for storing com for fast obj calc
-    double dy = 0;
 
-    const int noRestarts = 3;
+    const int noRestarts = 1;
     int restartNo = 0;
+    int itrCount;
 
-    const double runTime = 40;      // mins
-    clock_t start, end;
-    double elapsed = 0;
-    start = clock();
-    
-    double testDx, testDy;
+    int objIdx = 0;
+    double nextObj;
+    double tabuObj, bestTabuObj;
+    double tempDx, tempDy;
+    double bestDx, bestDy;
+    int bestI, bestJ;
+    int i, j;
+
+    int* tabuList = new int[120];
+    int* bestS = new int[120];
+
+    std::fill(tabuList, tabuList + 120, -tabuListLength); // initially un-ban all containers
+
+    double* bestObjStore; // for storing data to write to file
+    double* objStore;
+    int* bestObjIndex;
+
+    if(store) {
+        bestObjStore = new double[1000];
+        objStore = new double[STORE_SIZE];
+        bestObjIndex = new int[1000];
+    }
 
     for(; restartNo < noRestarts; ) {
-    // while(elapsed < runTime * 60) {
-        std::random_shuffle(&s[0], &s[120]);
         computeDxDy(s, weights, x, y, dx, dy);
 
-        obj = objective(s, weights, x, y);
-        bestObj = obj;
-        res = 0;
-        startJ = 0;
-        startI = 0;
-        
-        while(res != 1) {
-            int i, j;
-            F nextObj, tempDx, tempDy;
+        nextObj = objective(s, weights, x, y);
 
+        if(store) {
+            bestObjIndex[bestIdx] = objIdx;
+            bestObjStore[bestIdx] = nextObj / massTotal;
+            ++bestIdx;
+        }
+
+        currentObj = bestObj = nextObj;
+        itrCount = 0;
+
+        // while(res != 1) {
+        for(int k = 0; k < 100; ++k) {
+
+            // res = nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ, dx, dy, objStore, objIdx);
+            // tabuIteration(s, tabuList, tabuLength, weights, x, y, massTotal, nextObj, dx, dy, objStore, objIdx, itrCount);
+            bestTabuObj = INFINITY;
+
+            for(i = 0;i < 120; ++i) {
+                for(j = 0; j < i; ++j) {
+                    if((s[i] == 0 && s[j] == 0) || (j + 60 == i)) { continue; }
+
+                    if(itrCount - tabuList[s[i]] < tabuListLength) {
+                        ++i;
+                        if(i > 119) { goto endTabuLoop; }
+                        else { j = 0; }
+                    }
+                    if(itrCount - tabuList[s[j]] < tabuListLength) {
+                        continue;
+                    }
+
+                    tempDx = dx;
+                    tempDy = dy;
+
+                    centerOfMass(s, i, j, weights, x, y, tempDx, tempDy);
+                    tabuObj = fabs(tempDx) + 5 * fabs(tempDy);
+
+                    if(store) { 
+                        objStore[objIdx] = tabuObj;// / massTotal;
+                        ++objIdx;
+                        if(objIdx > STORE_SIZE) { throw std::out_of_range("Store index exceeded " + std::to_string(STORE_SIZE)); }
+                    }
+
+                    if(tabuObj < bestTabuObj) { 
+                        bestTabuObj = tabuObj;
+                        bestI = i;
+                        bestJ = j;
+                        bestDx = tempDx;
+                        bestDy = tempDy;
+                    }
+                }
+            }
+
+            endTabuLoop:
+            dx = bestDx;
+            dy = bestDy;
+            nextObj = bestTabuObj;
+
+            swap(s, bestI, bestJ);
+            tabuList[s[bestI]] = itrCount;
+            tabuList[s[bestJ]] = itrCount;
+
+            if(store) {
+                bestObjIndex[bestIdx] = objIdx;
+                bestObjStore[bestIdx] = currentObj / massTotal;
+                ++bestIdx;
+                bestObjIndex[bestIdx] = objIdx;
+                bestObjStore[bestIdx] = nextObj / massTotal;                
+                ++bestIdx;
+            }
+
+            currentObj = nextObj;
+
+            if(currentObj < bestObj) { // keep s if obj is best so far
+                copy(&bestS[0], &bestS[120], &s[0], &s[120]);
+                bestObj = currentObj;
+            }
+            ++noDescents;
+            ++itrCount;
+        }
+
+        if(store) {
+            indexStore[restartNo] = bestIdx;
+        }
+
+        if(randRestarts) {
+            std::random_shuffle(&s[0], &s[120]);
+        } else {
+            kicks(s, weights, x, y, 15, bestObjStore, bestObjIndex, objIdx, bestIdx, massTotal);
+        }
+        ++restartNo;
+    }
+
+    writeSolution("sln", bestS, bestS + 120);
+
+    std::cout << "Best objective: " << currentObj / massTotal << std::endl;
+
+    if(store) {
+        writeSolution("allObj", &objStore[0], &objStore[objIdx]);
+        writeSolution("bestObj", &bestObjStore[0], &bestObjStore[bestIdx]);
+        writeSolution("bestObjIdx", &bestObjIndex[0], &bestObjIndex[bestIdx]);
+        writeSolution("indices", &indexStore[0], &indexStore[3]);
+    } 
+
+    delete tabuList;
+    delete bestS;
+
+    if(store) {
+        delete objStore;    
+        delete bestObjStore;            
+        delete bestObjIndex;      
+    }
+}
+
+template<typename S, typename F>
+void runNextDescent(S* s, const int tabuListLength, const F* weights, const F* x, const F* y, const F massTotal, const bool store, const bool randRestarts, F& obj) {
+    double bestObj;
+    double currentObj;
+
+    double dx, dy;
+
+    int noDescents = 0;
+    int bestIdx = store ? 0: -1;    // index for storing best objective (plotting)
+    int indexStore[3];              // store indices of restarts (plotting)
+
+    const int noRestarts = 1;
+    int restartNo = 0;
+    int itrCount;
+    int res = 0;
+
+    int objIdx = 0;
+    double nextObj;
+    double tempDx, tempDy;
+    int i, j;
+    int startI = 0, startJ = 0;
+
+    int* bestS = new int[120];
+
+    double* bestObjStore; // for storing data to write to file
+    double* objStore;
+    int* bestObjIndex;
+
+    if(store) {
+        bestObjStore = new double[1000];
+        objStore = new double[STORE_SIZE];
+        bestObjIndex = new int[1000];
+    }
+
+    for(; restartNo < noRestarts; ) {
+        computeDxDy(s, weights, x, y, dx, dy);
+
+        nextObj = objective(s, weights, x, y);
+
+        if(store) {
+            bestObjIndex[bestIdx] = objIdx;
+            bestObjStore[bestIdx] = nextObj / massTotal;
+            ++bestIdx;
+        }
+
+        currentObj = bestObj = nextObj;
+        itrCount = 0;
+
+        while(res != 1) {
+            double descentObj; // replace nextObj
+            // res = nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ, dx, dy, objStore, objIdx);
+            // tabuIteration(s, tabuList, tabuLength, weights, x, y, massTotal, nextObj, dx, dy, objStore, objIdx, itrCount);
+            
             for(int itr = 0;itr < 120; ++itr) {
                 for(int jtr = 0; jtr < itr; ++jtr) {
                     i = (itr + startI) % 120;
@@ -307,44 +502,78 @@ void runNextDescent(S* s, F* weights, F* x, F* y, F massTotal, F* objStore, cons
                     tempDy = dy;
 
                     centerOfMass(s, i, j, weights, x, y, tempDx, tempDy);
-                    nextObj = fabs(tempDx) + 5 * fabs(tempDy);
+                    descentObj = fabs(tempDx) + 5 * fabs(tempDy);
 
+                    // for plotting
                     if(objIdx != -1) { 
-                        objStore[objIdx] = nextObj; 
+                        objStore[objIdx] = descentObj / massTotal; 
                         ++objIdx;
                     }
 
                     if(nextObj < obj) { 
-                        obj = nextObj;
+                        nextObj = descentObj;
                         startI = i;
                         startJ = j;
                         dx = tempDx;
                         dy = tempDy;
                         swap(s, i, j);
                         res = 0;
-                        goto endLoop; //! THIS IS ONLY HERE BECAUSE I CANT PUT IT IN A FUNCTION DAMN IT ANDREW
+                        goto endDescentLoop;
 
                     }
                 }
             }
             res = 1;
-    endLoop: //! FU
+            endDescentLoop:
 
-            ++noDescents;
             if(store) {
-
+                bestObjIndex[bestIdx] = objIdx;
+                bestObjStore[bestIdx] = currentObj / massTotal;
+                ++bestIdx;
+                bestObjIndex[bestIdx] = objIdx;
+                bestObjStore[bestIdx] = nextObj / massTotal;                
+                ++bestIdx;
             }
 
-            if(obj < bestObj) { 
+            currentObj = nextObj;
+
+            if(currentObj < bestObj) { // keep s if obj is best so far
                 copy(&bestS[0], &bestS[120], &s[0], &s[120]);
-                bestObj = obj;
+                bestObj = currentObj;
             }
+            ++noDescents;
+            ++itrCount;
         }
 
         if(store) {
             indexStore[restartNo] = bestIdx;
         }
+
+        if(randRestarts) {
+            std::random_shuffle(&s[0], &s[120]);
+        } else {
+            kicks(s, weights, x, y, 15, bestObjStore, bestObjIndex, objIdx, bestIdx, massTotal);
+        }
         ++restartNo;
+    }
+
+    writeSolution("sln", bestS, bestS + 120);
+
+    std::cout << "Best objective: " << currentObj / massTotal << std::endl;
+
+    if(store) {
+        writeSolution("allObj", &objStore[0], &objStore[objIdx]);
+        writeSolution("bestObj", &bestObjStore[0], &bestObjStore[bestIdx]);
+        writeSolution("bestObjIdx", &bestObjIndex[0], &bestObjIndex[bestIdx]);
+        writeSolution("indices", &indexStore[0], &indexStore[3]);
+    } 
+
+    delete bestS;
+
+    if(store) {
+        delete objStore;    
+        delete bestObjStore;            
+        delete bestObjIndex;      
     }
 }
 
@@ -403,105 +632,99 @@ void run() {
     std::string fname = "Positions.txt";
     std::string problem = "ProbA.txt";
     const int n = getProblemSize(path, problem);
+    const int noContainers = 120;
 
-    // alloc arrays. Could be done on stack but ¯\_(ツ)_/¯
-    int* s = new int[120];
-    int* bestS = new int[120];
-    double* x = new double[120];
-    double* y = new double[120];
+    int* s = new int[noContainers]; // alloc arrays. Could be done on stack but ¯\_(ツ)_/¯
+    int* bestS = new int[noContainers];
+    double* x = new double[noContainers];
+    double* y = new double[noContainers];
     double* weights = new double[n+1];
 
-    int* tabuList = new int[120];
-    std::fill(tabuList, tabuList +120, -50);
+    const bool randRestarts = false; // false for kicks, true for rand restarts
+    const bool store = true;
 
-    double* bestObjStore;
+    double* bestObjStore; // for storing data to write to file
     double* objStore;
     int* bestObjIndex;
 
-    // read in problem and coords of container positions
-    readData(path, fname, x, y);
+    readData(path, fname, x, y); // read in problem and coords of container positions
     readData(path, problem, weights);
 
+    fillSolution(s, n); // fills positions with containers in problem and empty containers for the rest
+    srand(1000000);
+    std::random_shuffle(&s[0], &s[noContainers]);
+
+    const int tabuLength = std::min(50, int(n/3));
     double massTotal = sum(&weights[0], &weights[n+1]);
 
-    // fills positions with containers in problem and empty containers for the rest
-    fillSolution(s, n);
-    srand(1000000);
-    std::random_shuffle(&s[0], &s[120]);
-    
-    const bool randRestarts = false; // false for kicks, true for rand restarts
-    const bool store = false;
-    const int tabuLength = 50;
 
-    if(store) {
-        bestObjStore = new double[1000];
-        objStore = new double[100000];
-        bestObjIndex = new int[1000];
-    }
+    double nextObj;
+    double dx = 0;                  // for storing com for fast obj calc
+    double dy = 0;
+    int objIdx = store ? 0 : -1;    // index for storing all computed objs (-1 if not plotting)
+    int itrCount;
 
-    double obj;
-    double bestObj = INFINITY;
+    // runTabu(s, tabuLength, weights, x, y, massTotal, store, randRestarts, nextObj);
+    runNextDescent(s, tabuLength, weights, x, y, massTotal, store, randRestarts, nextObj);
+
+    /*
+    double bestObj;
+    double currentObj;
 
     int startI, startJ;             // for continuing through neighborhood pick up where left off
     int res;                        // status of descent
 
     int noDescents = 0;
-    int bestIdx = store ? 0: -1;                // index for storing best objective (plotting)
-    int objIdx = store ? 0 : -1;    // index for storing all computed objs (-1 if not plotting)
+    int bestIdx = store ? 0: -1;    // index for storing best objective (plotting)
     int indexStore[3];              // store indices of restarts (plotting)
-    double dx = 0;                  // for storing com for fast obj calc
-    double dy = 0;
 
-    const int noRestarts = 3;
+    const int noRestarts = 1;
     int restartNo = 0;
 
-    const double runTime = 40;      // mins
-    clock_t start, end;
-    double elapsed = 0;
-    start = clock();
-    
     double testDx, testDy;
-    int itrCount;
 
     for(; restartNo < noRestarts; ) {
-    // while(elapsed < runTime * 60) {
-        
         computeDxDy(s, weights, x, y, dx, dy);
 
-        obj = objective(s, weights, x, y);
-        bestObj = obj;
-        res = 0;
-        startJ = 0;
-        startI = 0;
+        nextObj = objective(s, weights, x, y);
+
+        if(store) {
+            bestObjIndex[bestIdx] = objIdx;
+            bestObjStore[bestIdx] = nextObj / massTotal;
+            ++bestIdx;
+        }
+
+        currentObj = bestObj = nextObj;
+        startJ = startJ = 0;
         itrCount = 0;
+        res = 0;
 
         // while(res != 1) {
         for(int k = 0; k < 100; ++k) {
 
             // res = nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ, dx, dy, objStore, objIdx);
-            tabuIteration(s, tabuList, tabuLength, weights, x, y, massTotal, obj, dx, dy, objStore, objIdx, itrCount);
-            std::cout << obj << std::endl;
+            tabuIteration(s, tabuList, tabuLength, weights, x, y, massTotal, nextObj, dx, dy, objStore, objIdx, itrCount);
 
-            ++noDescents;
             if(store) {
                 bestObjIndex[bestIdx] = objIdx;
-                bestObjStore[bestIdx] = bestObj / massTotal;
+                bestObjStore[bestIdx] = currentObj / massTotal;
                 ++bestIdx;
                 bestObjIndex[bestIdx] = objIdx;
-                bestObjStore[bestIdx] = obj / massTotal;                
+                bestObjStore[bestIdx] = nextObj / massTotal;                
                 ++bestIdx;
             }
 
-            if(obj < bestObj) { 
+            currentObj = nextObj;
+
+            if(currentObj < bestObj) { // keep s if obj is best so far
                 copy(&bestS[0], &bestS[120], &s[0], &s[120]);
-                bestObj = obj;
+                bestObj = currentObj;
             }
+            ++noDescents;
+            ++itrCount;
         }
 
         if(store) {
-            // bestObjStore[bestIdx] = bestObj;
-            // bestObjIndex[bestIdx] = objIdx;
-            // ++bestIdx;
             indexStore[restartNo] = bestIdx;
         }
 
@@ -511,23 +734,12 @@ void run() {
             kicks(s, weights, x, y, 15, bestObjStore, bestObjIndex, objIdx, bestIdx, massTotal);
         }
 
-        end = clock();
-        elapsed = (double)(end - start)/(double)CLOCKS_PER_SEC;
-        /*
-        std::cout 
-            << "best objective: " << bestObj
-            << "\nnumber of descents: " << noDescents
-            << "\nrestart: " << restartNo
-            << "\ntime elapsed: " << elapsed / 60 << "mins" 
-            << "\n------------------------------------------"
-            << std::endl;
-        */
         ++restartNo;
     }
 
     writeSolution("sln", bestS, bestS + 120);
 
-    std::cout << "Best objective: " << bestObj / massTotal << std::endl;
+    std::cout << "Best objective: " << currentObj / massTotal << std::endl;
 
     if(store) {
         writeSolution("allObj", &objStore[0], &objStore[objIdx]);
@@ -536,22 +748,22 @@ void run() {
         writeSolution("indices", &indexStore[0], &indexStore[3]);
     }
 
+    */
+
     delete x;
     delete y;
     delete s;
     delete weights;
     delete bestS;
-    delete tabuList;
 
-    if(store) {
-        delete objStore;    
-        delete bestObjStore;            
-        delete bestObjIndex;      
-    }
+    // if(store) {
+    //     delete objStore;    
+    //     delete bestObjStore;            
+    //     delete bestObjIndex;      
+    // }
 
 }
 
 int main(void) {
-    // std::cout << INFINITY << std::endl;
     run();
 }
