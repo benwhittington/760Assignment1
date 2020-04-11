@@ -362,7 +362,7 @@ void runTabu(S* s, const int tabuListLength, const F* weights, const F* x, const
                     tabuObj = fabs(tempDx) + 5 * fabs(tempDy);
 
                     if(store) { 
-                        objStore[objIdx] = tabuObj;// / massTotal;
+                        objStore[objIdx] = tabuObj / massTotal;
                         ++objIdx;
                         if(objIdx > STORE_SIZE) { throw std::out_of_range("Store index exceeded " + std::to_string(STORE_SIZE)); }
                     }
@@ -510,7 +510,7 @@ void runNextDescent(S* s, const int tabuListLength, const F* weights, const F* x
                         ++objIdx;
                     }
 
-                    if(nextObj < obj) { 
+                    if(descentObj < nextObj) { 
                         nextObj = descentObj;
                         startI = i;
                         startJ = j;
