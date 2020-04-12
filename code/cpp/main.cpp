@@ -65,7 +65,7 @@ void readData(std::string path, std::string fname, T* x, T* y) {
     // std::string path = "/home/ben/Documents/uni/760/assignment1/data/";
 
     std::ifstream positionsStream;
-    positionsStream.open(path + "Positions.txt"); //put your program together with thsi file in the same folder.
+    positionsStream.open(path + "Positions.txt"); //put your program together with this file in the same folder.
     double* temp = new double[3];
 
     if(positionsStream.is_open()){
@@ -439,17 +439,17 @@ void runTabu(S* s, const int tabuListLength, const F* weights, const F* x, const
 }
 
 template<typename S, typename F>
-void runNextDescent(S* s, const int tabuListLength, const F* weights, const F* x, const F* y, const F massTotal, const bool store, const bool randRestarts, F& obj) {
-    double bestObj;
+void runNextDescent(S* s, const int tabuListLength, const F* weights, const F* x, const F* y, const F massTotal, const bool store, const bool randRestarts, const int noRestarts, F& obj) {
+    double bestIterationObj;
+    double bestObj = INFINITY;
     double currentObj;
 
     double dx, dy;
 
     int noDescents = 0;
     int bestIdx = store ? 0: -1;    // index for storing best objective (plotting)
-    int indexStore[3];              // store indices of restarts (plotting)
 
-    const int noRestarts = 1;
+    int indexStore[noRestarts];              // store indices of restarts (plotting)
     int restartNo = 0;
     int itrCount;
     int res = 0;
@@ -461,15 +461,18 @@ void runNextDescent(S* s, const int tabuListLength, const F* weights, const F* x
     int startI = 0, startJ = 0;
 
     int* bestS = new int[120];
+    int* bestIterationS = new int[120];
 
     double* bestObjStore; // for storing data to write to file
     double* objStore;
     int* bestObjIndex;
 
+    const int ALLOC_SIZE = 10000000;
+
     if(store) {
-        bestObjStore = new double[1000];
-        objStore = new double[STORE_SIZE];
-        bestObjIndex = new int[1000];
+        bestObjStore = new double[ALLOC_SIZE];
+        objStore = new double[ALLOC_SIZE];
+        bestObjIndex = new int[ALLOC_SIZE];
     }
 
     for(; restartNo < noRestarts; ) {
@@ -483,14 +486,16 @@ void runNextDescent(S* s, const int tabuListLength, const F* weights, const F* x
             ++bestIdx;
         }
 
-        currentObj = bestObj = nextObj;
+        currentObj = bestIterationObj = nextObj;
         itrCount = 0;
+        res = 0;
 
         while(res != 1) {
             double descentObj; // replace nextObj
             // res = nextDescentIteration(s, weights, x, y, massTotal, obj, startI, startJ, dx, dy, objStore, objIdx);
             // tabuIteration(s, tabuList, tabuLength, weights, x, y, massTotal, nextObj, dx, dy, objStore, objIdx, itrCount);
             
+            // std::cout << "done0" << std::endl;
             for(int itr = 0;itr < 120; ++itr) {
                 for(int jtr = 0; jtr < itr; ++jtr) {
                     i = (itr + startI) % 120;
@@ -505,7 +510,10 @@ void runNextDescent(S* s, const int tabuListLength, const F* weights, const F* x
                     descentObj = fabs(tempDx) + 5 * fabs(tempDy);
 
                     // for plotting
-                    if(objIdx != -1) { 
+                    if(store) { 
+                        if (objIdx > ALLOC_SIZE) { throw std::out_of_range("obj idx exceeds allocated storage: " + ALLOC_SIZE); }
+
+                        // std::cout << "restart no: " << restartNo << "| objIdx: " << objIdx << std::endl;
                         objStore[objIdx] = descentObj / massTotal; 
                         ++objIdx;
                     }
@@ -527,6 +535,7 @@ void runNextDescent(S* s, const int tabuListLength, const F* weights, const F* x
             endDescentLoop:
 
             if(store) {
+                // std::cout << bestIdx << std::endl;
                 bestObjIndex[bestIdx] = objIdx;
                 bestObjStore[bestIdx] = currentObj / massTotal;
                 ++bestIdx;
@@ -537,10 +546,12 @@ void runNextDescent(S* s, const int tabuListLength, const F* weights, const F* x
 
             currentObj = nextObj;
 
-            if(currentObj < bestObj) { // keep s if obj is best so far
-                copy(&bestS[0], &bestS[120], &s[0], &s[120]);
-                bestObj = currentObj;
+            if(currentObj < bestIterationObj) { // keep s if obj is best so far
+                copy(&bestIterationS[0], &bestIterationS[120], &s[0], &s[120]);
+                bestIterationObj = currentObj;
             }
+
+
             ++noDescents;
             ++itrCount;
         }
@@ -549,27 +560,43 @@ void runNextDescent(S* s, const int tabuListLength, const F* weights, const F* x
             indexStore[restartNo] = bestIdx;
         }
 
+        if(bestIterationObj < bestObj) {
+            copy(bestS, bestS + 120, bestIterationS, bestIterationS + 120);
+            bestObj = bestIterationObj;
+        }
+
+
         if(randRestarts) {
             std::random_shuffle(&s[0], &s[120]);
         } else {
             kicks(s, weights, x, y, 15, bestObjStore, bestObjIndex, objIdx, bestIdx, massTotal);
         }
+
+        // std::cout << "restart no: " << restartNo << std::endl;
         ++restartNo;
     }
+    
 
-    writeSolution("sln", bestS, bestS + 120);
 
-    std::cout << "Best objective: " << currentObj / massTotal << std::endl;
+    bestObj /= massTotal;
 
+    std::cout << "Best objective: " << bestObj << std::endl;
+
+    const std::string directory = "kicks/";
+
+    writeSolution(directory + "sln", bestS, bestS + 120);
     if(store) {
-        writeSolution("allObj", &objStore[0], &objStore[objIdx]);
-        writeSolution("bestObj", &bestObjStore[0], &bestObjStore[bestIdx]);
-        writeSolution("bestObjIdx", &bestObjIndex[0], &bestObjIndex[bestIdx]);
-        writeSolution("indices", &indexStore[0], &indexStore[3]);
+        writeSolution(directory + "allObj", &objStore[0], &objStore[objIdx]);
+        writeSolution(directory + "bestObj", &bestObjStore[0], &bestObjStore[bestIdx]);
+        writeSolution(directory + "bestObjIdx", &bestObjIndex[0], &bestObjIndex[bestIdx]);
+        writeSolution(directory + "indices", &indexStore[0], &indexStore[noRestarts]);
+        writeSolution(directory + "objective", &bestObj, &bestObj + 1);
     } 
 
     delete bestS;
+    delete bestIterationS;
 
+    // std::cout << "done1" << std::endl;
     if(store) {
         delete objStore;    
         delete bestObjStore;            
@@ -642,10 +669,11 @@ void run() {
 
     const bool randRestarts = false; // false for kicks, true for rand restarts
     const bool store = true;
+    const int noRestarts = 3;
 
-    double* bestObjStore; // for storing data to write to file
-    double* objStore;
-    int* bestObjIndex;
+    // double* bestObjStore; // for storing data to write to file
+    // double* objStore;
+    // int* bestObjIndex;
 
     readData(path, fname, x, y); // read in problem and coords of container positions
     readData(path, problem, weights);
@@ -659,13 +687,13 @@ void run() {
 
 
     double nextObj;
-    double dx = 0;                  // for storing com for fast obj calc
-    double dy = 0;
-    int objIdx = store ? 0 : -1;    // index for storing all computed objs (-1 if not plotting)
-    int itrCount;
+    // double dx = 0;                  // for storing com for fast obj calc
+    // double dy = 0;
+    // int objIdx = store ? 0 : -1;    // index for storing all computed objs (-1 if not plotting)
+    // int itrCount;
 
     // runTabu(s, tabuLength, weights, x, y, massTotal, store, randRestarts, nextObj);
-    runNextDescent(s, tabuLength, weights, x, y, massTotal, store, randRestarts, nextObj);
+    runNextDescent(s, tabuLength, weights, x, y, massTotal, store, randRestarts, noRestarts, nextObj);
 
     /*
     double bestObj;
@@ -750,11 +778,11 @@ void run() {
 
     */
 
+    delete s;
+    delete bestS;
     delete x;
     delete y;
-    delete s;
     delete weights;
-    delete bestS;
 
     // if(store) {
     //     delete objStore;    
